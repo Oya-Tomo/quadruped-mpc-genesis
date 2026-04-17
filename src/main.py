@@ -11,9 +11,9 @@ from mpc.leg_controller import LegController
 from mpc.gait import Gait
 
 RUN_SIM_LENGTH_S = 10.0
-SIM_HZ = 1000
+SIM_HZ = 200
 SIM_DT = 1.0 / SIM_HZ
-CTRL_HZ = 200
+CTRL_HZ = 100
 CTRL_DT = 1.0 / CTRL_HZ
 CTRL_DECIM = SIM_HZ // CTRL_HZ
 
@@ -89,8 +89,8 @@ def main():
 
     genesis_go2.update_pin_with_genesis(go2)
 
-    x_vel_des_body = 0.8
-    y_vel_des_body = 0.0
+    x_vel_des_body = 0.5
+    y_vel_des_body = 0.5
     # Start z target from actual CoM height after settling, not hardcoded.
     # MPC clamps pos_des_world to within 0.1m of current position each call, so
     # this just avoids a large initial error causing the MPC to "pull" the robot down.
