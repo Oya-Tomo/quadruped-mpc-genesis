@@ -1,14 +1,15 @@
-import genesis as gs
-import numpy as np
 import time
 from dataclasses import dataclass, field
 
+import genesis as gs
+import numpy as np
+
 from genesis_model import Genesis_GO2_Model
-from mpc.go2_robot_data import PinGo2Model
-from mpc.com_trajectory import ComTraj
 from mpc.centroidal_mpc import CentroidalMPC
-from mpc.leg_controller import LegController
+from mpc.com_trajectory import ComTraj
 from mpc.gait import Gait
+from mpc.go2_robot_data import PinGo2Model
+from mpc.leg_controller import LegController
 
 RUN_SIM_LENGTH_S = 10.0
 SIM_HZ = 200
@@ -25,12 +26,22 @@ MPC_DT = GAIT_T / 16
 MPC_HZ = 1.0 / MPC_DT
 STEPS_PER_MPC = max(1, int(CTRL_HZ // MPC_HZ))
 
-TAU_LIM = 0.9 * np.array([
-    23.7, 23.7, 45.43,   # FL
-    23.7, 23.7, 45.43,   # FR
-    23.7, 23.7, 45.43,   # RL
-    23.7, 23.7, 45.43,   # RR
-])
+TAU_LIM = 0.9 * np.array(
+    [
+        23.7,
+        23.7,
+        45.43,  # FL
+        23.7,
+        23.7,
+        45.43,  # FR
+        23.7,
+        23.7,
+        45.43,  # RL
+        23.7,
+        23.7,
+        45.43,  # RR
+    ]
+)
 
 LEG_SLICE = {
     "FL": slice(0, 3),
@@ -38,6 +49,7 @@ LEG_SLICE = {
     "RL": slice(6, 9),
     "RR": slice(9, 12),
 }
+
 
 def main():
     gs.init(backend=gs.gpu)
@@ -49,6 +61,7 @@ def main():
             gravity=(0, 0, -9.81),
         ),
         viewer_options=gs.options.ViewerOptions(
+            max_FPS=SIM_HZ,
             res=(1280, 720),
             camera_pos=(2.0, -2.0, 1.5),
             camera_lookat=(0.0, 0.0, 0.3),
@@ -58,8 +71,11 @@ def main():
 
     scene.add_entity(gs.morphs.Plane())
     import os
+
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    urdf_path = os.path.join(current_dir, "../assets/URDF/go2_description/urdf/go2_description.urdf")
+    urdf_path = os.path.join(
+        current_dir, "../assets/URDF/go2_description/urdf/go2_description.urdf"
+    )
     urdf_path = os.path.normpath(urdf_path)
     genesis_go2 = Genesis_GO2_Model(scene, urdf_path)
 
@@ -72,14 +88,13 @@ def main():
 
     # Allow robot to settle
     print("Settling robot...")
-    init_q_pin = np.array([0.0, 0.8, -1.5, 0.0, 0.8, -1.5, 0.0, 0.8, -1.5, 0.0, 0.8, -1.5])
+    init_q_pin = np.array(
+        [0.0, 0.8, -1.5, 0.0, 0.8, -1.5, 0.0, 0.8, -1.5, 0.0, 0.8, -1.5]
+    )
     pin2gen_idx = [0, 3, 6, 9, 1, 4, 7, 10, 2, 5, 8, 11]
     init_q_gen = init_q_pin[pin2gen_idx]
 
-    genesis_go2.robot.control_dofs_position(
-        init_q_gen,
-        dofs_idx_local=np.arange(6, 18)
-    )
+    genesis_go2.robot.control_dofs_position(init_q_gen, dofs_idx_local=np.arange(6, 18))
     for _ in range(300):
         scene.step()
 
@@ -99,9 +114,14 @@ def main():
     yaw_rate_des_body = 0.0
 
     traj.generate_traj(
-        go2, gait, 0.0,
-        x_vel_des_body, y_vel_des_body, z_pos_des_body, yaw_rate_des_body,
-        time_step=MPC_DT
+        go2,
+        gait,
+        0.0,
+        x_vel_des_body,
+        y_vel_des_body,
+        z_pos_des_body,
+        yaw_rate_des_body,
+        time_step=MPC_DT,
     )
     # After first traj generation, lock pos_des_world to actual CoM position so
     # subsequent calls will only drift 0.1m/step toward target
@@ -125,9 +145,14 @@ def main():
 
             if ctrl_i % STEPS_PER_MPC == 0:
                 traj.generate_traj(
-                    go2, gait, time_now_s,
-                    x_vel_des_body, y_vel_des_body, z_pos_des_body, yaw_rate_des_body,
-                    time_step=MPC_DT
+                    go2,
+                    gait,
+                    time_now_s,
+                    x_vel_des_body,
+                    y_vel_des_body,
+                    z_pos_des_body,
+                    yaw_rate_des_body,
+                    time_step=MPC_DT,
                 )
                 sol = mpc.solve_QP(go2, traj, False)
                 w_opt = sol["x"].full().flatten()
@@ -140,8 +165,12 @@ def main():
 
             for leg in ["FL", "FR", "RL", "RR"]:
                 leg_out = leg_controller.compute_leg_torque(
-                    leg, go2, gait, mpc_force_world[LEG_SLICE[leg]],
-                    time_now_s, real_contact
+                    leg,
+                    go2,
+                    gait,
+                    mpc_force_world[LEG_SLICE[leg]],
+                    time_now_s,
+                    real_contact,
                 )
                 tau_cmd[LEG_SLICE[leg]] = leg_out.tau
 
@@ -150,10 +179,11 @@ def main():
 
         genesis_go2.set_joint_torque(tau_cmd)
         scene.step()
-        
+
         if k % 100 == 0:
             pos = genesis_go2.robot.get_pos().cpu().numpy()
             print(f"Step {k}: z={pos[2]:.3f}, tau_FL={tau_cmd[0:3]}")
+
 
 if __name__ == "__main__":
     main()
